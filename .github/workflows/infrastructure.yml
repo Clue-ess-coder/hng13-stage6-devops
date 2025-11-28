@@ -1,0 +1,273 @@
+name: Infrastructure Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/terraform/**'
+      - 'infra/ansible/**'
+      - '.github/workflows/infrastructure.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'infra/terraform/**'
+      - 'infra/ansible/**'
+  workflow_dispatch:
+
+env:
+  TF_VERSION: '1.6.0'
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan & Drift Detection
+    runs-on: ubuntu-latest
+    outputs:
+      has_drift: ${{ steps.drift_check.outputs.has_drift }}
+      plan_output: ${{ steps.plan.outputs.stdout }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./infra/terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: ./infra/terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ./infra/terraform
+        run: |
+          terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan_output.txt
+          cat plan_output.txt
+
+      - name: Check for Drift
+        id: drift_check
+        working-directory: ./infra/terraform
+        run: |
+          # Check if plan shows any changes
+          if grep -q "No changes" plan_output.txt; then
+            echo "has_drift=false" >> $GITHUB_OUTPUT
+            echo "  No drift detected"
+          else
+            echo "has_drift=true" >> $GITHUB_OUTPUT
+            echo "⚠️ DRIFT DETECTED"
+          fi
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: ./infra/terraform/tfplan
+          retention-days: 5
+
+      - name: Upload Plan Output
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-output
+          path: ./infra/terraform/plan_output.txt
+          retention-days: 5
+
+  send-drift-notification:
+    name: Send Drift Detection Email
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: needs.terraform-plan.outputs.has_drift == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Plan Output
+        uses: actions/download-artifact@v4
+        with:
+          name: plan-output
+
+      - name: Send Email Notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "⚠️ Terraform Drift Detected - Action Required"
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: ${{ secrets.SMTP_FROM_EMAIL }}
+          body: |
+            Infrastructure Drift Detected!
+            
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Triggered by: ${{ github.actor }}
+            
+            Changes have been detected in your Terraform infrastructure.
+            Please review the plan output and approve the deployment if the changes are expected.
+            
+            Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ---
+            This is an automated notification from the CI/CD pipeline.
+          attachments: plan_output.txt
+          html_body: |
+            <h2>Infrastructure Drift Detected</h2>
+            <p>Changes have been detected in your Terraform infrastructure that require your attention.</p>
+            
+            <h3>Details:</h3>
+            <ul>
+              <li><strong>Repository:</strong> ${{ github.repository }}</li>
+              <li><strong>Branch:</strong> ${{ github.ref_name }}</li>
+              <li><strong>Commit:</strong> ${{ github.sha }}</li>
+              <li><strong>Triggered by:</strong> ${{ github.actor }}</li>
+            </ul>
+            
+            <h3>What's next:</h3>
+            <ol>
+              <li>Review the attached Terraform plan output</li>
+              <li>Verify the changes are expected</li>
+              <li>Approve the deployment in the GitHub Actions workflow</li>
+            </ol>
+            
+            <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a></p>
+            
+            <hr>
+            <p><small>This is an automated notification from the CI/CD pipeline.</small></p>
+
+  wait-for-approval:
+    name: Wait for Manual Approval
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, send-drift-notification]
+    if: needs.terraform-plan.outputs.has_drift == 'true'
+    environment:
+      name: production
+    
+    steps:
+      - name: Manual Approval Required
+        run: |
+          echo "Waiting for manual approval before applying infrastructure changes..."
+          echo "Drift detected - please review and approve to proceed."
+
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, wait-for-approval]
+    if: |
+      always() &&
+      needs.terraform-plan.result == 'success' &&
+      (needs.terraform-plan.outputs.has_drift == 'false' || needs.wait-for-approval.result == 'success')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./infra/terraform
+        run: terraform init
+
+      - name: Download Terraform Plan
+        if: needs.terraform-plan.outputs.has_drift == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+          path: ./infra/terraform
+
+      - name: Terraform Apply
+        working-directory: ./infra/terraform
+        run: |
+          if [ "${{ needs.terraform-plan.outputs.has_drift }}" == "true" ]; then
+            echo "Applying changes from plan..."
+            terraform apply -auto-approve tfplan
+          else
+            echo "No changes detected, running apply to verify..."
+            terraform apply -auto-approve
+          fi
+
+      - name: Terraform Output
+        working-directory: ./infra/terraform
+        run: terraform output -json
+
+  send-completion-notification:
+    name: Send Deployment Completion Email
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    if: always() && needs.terraform-apply.result == 'success'
+    
+    steps:
+      - name: Send Success Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Infrastructure Deployment Completed Successfully"
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: ${{ secrets.SMTP_FROM_EMAIL }}
+          body: |
+            Infrastructure Deployment Completed!
+            
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Deployed by: ${{ github.actor }}
+            
+            Your infrastructure has been successfully deployed.
+            
+            Application URL: https://${{ secrets.DOMAIN_NAME }}
+            Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ---
+            This is an automated notification from the CI/CD pipeline.
+          html_body: |
+            <h2>Infrastructure Deployment Completed</h2>
+            <p>Your infrastructure has been successfully deployed!</p>
+            
+            <h3>Details:</h3>
+            <ul>
+              <li><strong>Repository:</strong> ${{ github.repository }}</li>
+              <li><strong>Branch:</strong> ${{ github.ref_name }}</li>
+              <li><strong>Commit:</strong> ${{ github.sha }}</li>
+              <li><strong>Deployed by:</strong> ${{ github.actor }}</li>
+            </ul>
+            
+            <h3>Links:</h3>
+            <ul>
+              <li><a href="https://${{ secrets.DOMAIN_NAME }}">Application URL</a></li>
+              <li><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">Workflow Run</a></li>
+            </ul>
+            
+            <hr>
+            <p><small>This is an automated notification from the CI/CD pipeline.</small></p>

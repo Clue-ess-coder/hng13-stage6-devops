@@ -18,6 +18,16 @@ The diagram describes the various components and their interactions.
 
 Note: 3 different login details are provided in the .env file 
 
+## Running with Docker Compose
+
+To run all the services together using Docker Compose, run the following command:
+
+```bash
+docker-compose up --build
+```
+
+This will build the Docker images for all the services and start them.
+
 ## License
 
 MIT

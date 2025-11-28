@@ -1,0 +1,124 @@
+services:
+  traefik:
+    image: traefik:v2.10 
+    container_name: traefik
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.email="
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+    networks:
+      - web
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    environment:
+      - PORT=8080 
+      - AUTH_API_ADDRESS=http://auth-api:8081
+      - TODOS_API_ADDRESS=http://todos-api:8082
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host()"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+    networks:
+      - web
+
+  auth-api:
+    build:
+      context: ./auth-api
+      dockerfile: Dockerfile
+    container_name: auth-api
+    environment:
+      - AUTH_API_PORT=8081
+      - USERS_API_ADDRESS=http://users-api:8083
+      - JWT_SECRET=a90yqs6ogFYJtQVT4yQLh6o96EDFl/wIFv806Rwy+WI=
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth-api.rule=Host() && PathPrefix()"
+      - "traefik.http.routers.auth-api.entrypoints=websecure"
+      - "traefik.http.routers.auth-api.tls.certresolver=myresolver"
+      - "traefik.http.services.auth-api.loadbalancer.server.port=8081"
+    networks:
+      - web
+
+  todos-api:
+    build:
+      context: ./todos-api
+      dockerfile: Dockerfile
+    container_name: todos-api
+    environment:
+      - JWT_SECRET=a90yqs6ogFYJtQVT4yQLh6o96EDFl/wIFv806Rwy+WI=
+      - REDIS_HOST=redis-queue
+      - REDIS_PORT=6379
+      - REDIS_CHANNEL=log_channel
+      - TODOS_API_PORT=8082
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.todos-api.rule=Host() && PathPrefix()"
+      - "traefik.http.routers.todos-api.entrypoints=websecure"
+      - "traefik.http.routers.todos-api.tls.certresolver=myresolver"
+      - "traefik.http.services.todos-api.loadbalancer.server.port=8082"
+    networks:
+      - web
+
+  users-api:
+    build:
+      context: ./users-api
+      dockerfile: Dockerfile
+    container_name: users-api
+    environment:
+      - JWT_SECRET=a90yqs6ogFYJtQVT4yQLh6o96EDFl/wIFv806Rwy+WI=
+      - SERVER_PORT=8083
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users-api.rule=Host() && PathPrefix()"
+      - "traefik.http.routers.users-api.entrypoints=websecure"
+      - "traefik.http.routers.users-api.tls.certresolver=myresolver"
+      - "traefik.http.services.users-api.loadbalancer.server.port=8083"
+    networks:
+      - web
+
+  log-message-processor:
+    build:
+      context: ./log-message-processor
+      dockerfile: Dockerfile
+    container_name: log-message-processor
+    environment:
+      - REDIS_HOST=redis-queue
+      - REDIS_PORT=6379
+      - REDIS_CHANNEL=log_channel
+    networks:
+      - web
+
+  redis-queue:
+    image: redis:6.2-alpine
+    container_name: redis-queue
+    volumes:
+      - redis_data:/data 
+    networks:
+      - web
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  web:
+    driver: bridge

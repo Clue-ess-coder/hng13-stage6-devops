@@ -1,0 +1,119 @@
+---
+- name: Create application directory
+  file:
+    path: /opt/app
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+
+- name: Check if repository exists
+  stat:
+    path: /opt/app/.git
+  register: git_repo
+
+- name: Clone repository if not exists
+  git:
+    repo: "{{ git_repo_url }}"
+    dest: /opt/app
+    version: "{{ git_branch }}"
+    force: yes
+  become_user: ubuntu
+  when: not git_repo.stat.exists
+
+- name: Pull latest changes from repository
+  git:
+    repo: "{{ git_repo_url }}"
+    dest: /opt/app
+    version: "{{ git_branch }}"
+    force: yes
+    update: yes
+  become_user: ubuntu
+  register: git_pull
+  when: git_repo.stat.exists
+
+- name: Create .env file from template
+  template:
+    src: env.j2
+    dest: /opt/app/.env
+    owner: ubuntu
+    group: ubuntu
+    mode: '0644'
+  register: env_file
+
+- name: Create letsencrypt directory
+  file:
+    path: /opt/app/letsencrypt
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+
+- name: Check if acme.json exists
+  stat:
+    path: /opt/app/letsencrypt/acme.json
+  register: acme_json
+
+- name: Create acme.json if not exists
+  file:
+    path: /opt/app/letsencrypt/acme.json
+    state: touch
+    owner: ubuntu
+    group: ubuntu
+    mode: '0600'
+  when: not acme_json.stat.exists
+
+- name: Stop existing containers
+  docker_compose:
+    project_src: /opt/app
+    state: absent
+  become_user: ubuntu
+  when: git_pull.changed or env_file.changed
+  ignore_errors: yes
+
+- name: Pull latest Docker images
+  docker_compose:
+    project_src: /opt/app
+    pull: yes
+  become_user: ubuntu
+  when: git_pull.changed or env_file.changed
+
+- name: Build Docker images
+  docker_compose:
+    project_src: /opt/app
+    build: yes
+  become_user: ubuntu
+  register: build_result
+
+- name: Start Docker Compose services
+  docker_compose:
+    project_src: /opt/app
+    state: present
+  become_user: ubuntu
+  register: compose_result
+
+- name: Wait for services to be healthy
+  pause:
+    seconds: 30
+
+- name: Check running containers
+  command: docker ps
+  become_user: ubuntu
+  register: docker_ps
+  changed_when: false
+
+- name: Display running containers
+  debug:
+    var: docker_ps.stdout_lines
+
+- name: Get Traefik logs
+  command: docker logs traefik --tail 50
+  become_user: ubuntu
+  register: traefik_logs
+  changed_when: false
+  ignore_errors: yes
+
+- name: Display Traefik logs
+  debug:
+    var: traefik_logs.stdout_lines
+  when: traefik_logs is defined
