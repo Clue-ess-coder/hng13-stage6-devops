@@ -45,6 +45,24 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      - name: Create terraform.tfvars
+        working-directory: ./infra/terraform
+        run: |
+          cat > terraform.tfvars <<EOF
+          aws_region = "${{ secrets.AWS_REGION }}"
+          environment = "production"
+          project_name = "hng13-stage6"
+          instance_type = "c7i-flex.large"
+          key_name = "hng13-stage6-deploy-key"
+          ssh_public_key = "${{ secrets.SSH_PUBLIC_KEY }}"
+          allowed_ssh_cidr = ["0.0.0.0/0"]
+          domain_name = "${{ secrets.DOMAIN_NAME }}"
+          acme_email = "${{ secrets.ACME_EMAIL }}"
+          git_repo_url = "${{ secrets.GIT_REPO_URL }}"
+          git_branch = "main"
+          jwt_secret = "${{ secrets.JWT_SECRET }}"
+          EOF
+
       - name: Terraform Init
         working-directory: ./infra/terraform
         run: terraform init
@@ -192,6 +210,24 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
+
+      - name: Create terraform.tfvars
+        working-directory: ./infra/terraform
+        run: |
+          cat > terraform.tfvars <<EOF
+          aws_region = "${{ secrets.AWS_REGION }}"
+          environment = "production"
+          project_name = "hng13-stage6"
+          instance_type = "c7i-flex.large"
+          key_name = "hng13-stage6-deploy-key"
+          ssh_public_key = "${{ secrets.SSH_PUBLIC_KEY }}"
+          allowed_ssh_cidr = ["0.0.0.0/0"]
+          domain_name = "${{ secrets.DOMAIN_NAME }}"
+          acme_email = "${{ secrets.ACME_EMAIL }}"
+          git_repo_url = "${{ secrets.GIT_REPO_URL }}"
+          git_branch = "main"
+          jwt_secret = "${{ secrets.JWT_SECRET }}"
+          EOF
 
       - name: Terraform Init
         working-directory: ./infra/terraform
