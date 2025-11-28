@@ -20,7 +20,7 @@ output "security_group_id" {
 
 output "ssh_connection_string" {
   description = "SSH connection string"
-  value       = "ssh -i ~/.ssh/${var.key_name}.pem ubuntu@${aws_eip.microservices.public_ip}"
+  value       = "ssh -i ~/.ssh/id_ed25519 ubuntu@${aws_eip.microservices.public_ip}"
 }
 
 output "application_url" {

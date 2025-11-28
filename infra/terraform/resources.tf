@@ -147,7 +147,7 @@ resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/templates/inventory.tpl", {
     server_ip    = aws_eip.microservices.public_ip
     ssh_user     = "ubuntu"
-    ssh_key_path = "~/.ssh/${var.key_name}.pem"
+    ssh_key_path = "~/.ssh/id_ed25519"
     domain_name  = var.domain_name
     acme_email   = var.acme_email
     git_repo_url = var.git_repo_url
