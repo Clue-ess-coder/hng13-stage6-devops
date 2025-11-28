@@ -14,12 +14,8 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# Create SSH Key Pair if public key is provided
-resource "aws_key_pair" "deployer" {
-  count      = var.ssh_public_key != "" ? 1 : 0
-  key_name   = var.key_name
-  public_key = var.ssh_public_key
-}
+# Use existing SSH Key Pair (already created in AWS)
+# If key doesn't exist, you need to create it manually in AWS Console
 
 # Security Group
 resource "aws_security_group" "microservices" {

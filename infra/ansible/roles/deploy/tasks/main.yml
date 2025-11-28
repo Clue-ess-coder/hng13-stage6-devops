@@ -64,31 +64,25 @@
   when: not acme_json.stat.exists
 
 - name: Stop existing containers
-  docker_compose:
-    project_src: /opt/app
-    state: absent
+  shell: docker compose down
+  args:
+    chdir: /opt/app
   become_user: ubuntu
   when: git_pull.changed or env_file.changed
   ignore_errors: yes
 
 - name: Pull latest Docker images
-  docker_compose:
-    project_src: /opt/app
-    pull: yes
+  shell: docker compose pull
+  args:
+    chdir: /opt/app
   become_user: ubuntu
   when: git_pull.changed or env_file.changed
+  ignore_errors: yes
 
-- name: Build Docker images
-  docker_compose:
-    project_src: /opt/app
-    build: yes
-  become_user: ubuntu
-  register: build_result
-
-- name: Start Docker Compose services
-  docker_compose:
-    project_src: /opt/app
-    state: present
+- name: Build and start Docker Compose services
+  shell: docker compose up -d --build
+  args:
+    chdir: /opt/app
   become_user: ubuntu
   register: compose_result
 
