@@ -21,7 +21,7 @@ terraform {
     key            = "hng13-stage6/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "hng13-stage6-state-lock"
+    dynamodb_table = "hgn13-stage6-state-lock"
   }
 }
 
