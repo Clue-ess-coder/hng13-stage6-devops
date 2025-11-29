@@ -252,8 +252,42 @@ jobs:
           fi
 
       - name: Terraform Output
+        id: terraform_output
         working-directory: ./infra/terraform
-        run: terraform output -json
+        run: |
+          terraform output -json > outputs.json
+          cat outputs.json
+          echo "instance_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ steps.terraform_output.outputs.instance_ip }} >> ~/.ssh/known_hosts
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
+      - name: Wait for instance to be ready
+        run: |
+          echo "Waiting for instance to be fully ready..."
+          sleep 60
+
+      - name: Run Ansible Deployment
+        working-directory: ./infra/ansible
+        run: |
+          ansible-playbook -i inventory.ini playbook.yml -v
+
+      - name: Verify Deployment
+        run: |
+          echo "Waiting for services to start..."
+          sleep 30
+          echo "Testing application endpoints..."
+          curl -k https://${{ secrets.DOMAIN_NAME }} || echo "Frontend not ready yet"
+          curl -k https://${{ secrets.DOMAIN_NAME }}/api/auth || echo "Auth API not ready yet"
 
   send-completion-notification:
     name: Send Deployment Completion Email

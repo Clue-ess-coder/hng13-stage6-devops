@@ -156,22 +156,3 @@ resource "local_file" "ansible_inventory" {
 
   depends_on = [aws_eip.microservices]
 }
-
-# Trigger Ansible after Terraform apply
-resource "null_resource" "run_ansible" {
-  triggers = {
-    instance_id = aws_instance.microservices.id
-    always_run  = timestamp()
-  }
-
-  provisioner "local-exec" {
-    command     = "sleep 60 && ansible-playbook -i ${path.module}/../ansible/inventory.ini ${path.module}/../ansible/playbook.yml"
-    working_dir = path.module
-    on_failure  = continue
-  }
-
-  depends_on = [
-    local_file.ansible_inventory,
-    aws_eip.microservices
-  ]
-}
