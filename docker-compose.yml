@@ -28,9 +28,9 @@ services:
       dockerfile: Dockerfile
     container_name: frontend
     environment:
-      - PORT=8080 
-      - AUTH_API_ADDRESS=http://auth-api:8081
-      - TODOS_API_ADDRESS=http://todos-api:8082
+      - PORT=8080
+      - AUTH_API_ADDRESS=/api/auth
+      - TODOS_API_ADDRESS=/api/todos
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
@@ -111,7 +111,7 @@ services:
     image: redis:6.2-alpine
     container_name: redis-queue
     volumes:
-      - redis_data:/data 
+      - redis_data:/data
     networks:
       - web
 

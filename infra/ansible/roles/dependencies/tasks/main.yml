@@ -1,6 +1,6 @@
 ---
 - name: Install required system packages
-  apt:
+  ansible.builtin.apt:
     name:
       - apt-transport-https
       - ca-certificates
@@ -16,18 +16,18 @@
     update_cache: yes
 
 - name: Add Docker GPG key
-  apt_key:
+  ansible.builtin.apt_key:
     url: https://download.docker.com/linux/ubuntu/gpg
     state: present
 
 - name: Add Docker repository
-  apt_repository:
+  ansible.builtin.apt_repository:
     repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
     update_cache: yes
 
 - name: Install Docker
-  apt:
+  ansible.builtin.apt:
     name:
       - docker-ce
       - docker-ce-cli
@@ -38,50 +38,67 @@
     update_cache: yes
 
 - name: Ensure Docker is started and enabled
-  systemd:
+  ansible.builtin.systemd_service:
     name: docker
     state: started
     enabled: yes
 
 - name: Add ubuntu user to docker group
-  user:
+  ansible.builtin.user:
     name: ubuntu
     groups: docker
     append: yes
 
+- name: Ensure Docker Daemon accepts API v1.24
+  ansible.builtin.copy:
+    content: |
+      {
+        "min-api-version": "1.24"
+      }
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart docker
+
+- name: Restart Docker service to apply daemon changes
+  ansible.builtin.systemd_service:
+    name: docker
+    state: restarted
+
 - name: Install Docker Compose standalone
-  get_url:
+  ansible.builtin.get_url:
     url: "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64"
     dest: /usr/local/bin/docker-compose
-    mode: '0755'
+    mode: "0755"
 
 - name: Create symbolic link for docker-compose
-  file:
+  ansible.builtin.file:
     src: /usr/local/bin/docker-compose
     dest: /usr/bin/docker-compose
     state: link
 
 - name: Install Python Docker SDK
-  pip:
+  ansible.builtin.pip:
     name:
       - docker
       - docker-compose
     state: present
 
 - name: Test Docker installation
-  command: docker --version
+  ansible.builtin.command: docker --version
   register: docker_version
   changed_when: false
 
 - name: Display Docker version
-  debug:
+  ansible.builtin.debug:
     var: docker_version.stdout
 
 - name: Test Docker Compose installation
-  command: docker-compose --version
+  ansible.builtin.command: docker-compose --version
   register: docker_compose_version
   changed_when: false
 
 - name: Display Docker Compose version
-  debug:
+  ansible.builtin.debug:
     var: docker_compose_version.stdout
