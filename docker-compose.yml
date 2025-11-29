@@ -27,10 +27,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frontend
-    environment:
-      - PORT=8080
-      - AUTH_API_ADDRESS=/api/auth
-      - TODOS_API_ADDRESS=/api/todos
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
@@ -106,6 +102,7 @@ services:
       context: ./log-message-processor
       dockerfile: Dockerfile
     container_name: log-message-processor
+    command: sh -c "sleep 5 && python3 main.py"
     environment:
       - REDIS_HOST=redis-queue
       - REDIS_PORT=6379
