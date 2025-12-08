@@ -108,7 +108,7 @@ jobs:
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ steps.terraform_output.outputs.server_ip }} >> ~/.ssh/known_hosts
 
@@ -132,6 +132,13 @@ jobs:
           git_branch=main
           jwt_secret=${{ secrets.JWT_SECRET }}
           EOF
+
+      - name: Wait for SSH to be ready
+        run: |
+          IP=${{ steps.terraform_output.outputs.server_ip }}
+          echo "Ensuring SSH is ready on $IP..."
+          timeout 60 bash -c "until nc -z -w 5 $IP 22; do echo 'Waiting...'; sleep 5; done"
+          echo "SSH connection confirmed."
 
       - name: Run Ansible Deployment
         working-directory: ./infra/ansible
