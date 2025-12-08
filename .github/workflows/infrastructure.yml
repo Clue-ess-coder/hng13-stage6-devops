@@ -275,7 +275,7 @@ jobs:
         run: |
           IP=${{ steps.terraform_output.outputs.instance_ip }}
           echo "Waiting for SSH on $IP..."
-          timeout 120 bash -c 'until nc -z -w 5 $IP 22; do echo "Waiting..."; sleep 5; done'
+          timeout 120 bash -c "until nc -z -w 5 $IP 22; do echo 'Waiting...'; sleep 5; done"
           echo "SSH port is open. Proceeding...."
 
       - name: Run Ansible Deployment
