@@ -259,11 +259,14 @@ jobs:
           cat outputs.json
           echo "instance_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
 
-      - name: Setup SSH Key
+      - name: Add SSH Key to Agent
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Scan host key
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ steps.terraform_output.outputs.instance_ip }} >> ~/.ssh/known_hosts
 
       - name: Install Ansible
